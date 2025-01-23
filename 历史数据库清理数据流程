@@ -1,0 +1,89 @@
+## 历史数据库清理数据流程
+
+![](C:\Users\Administrator\Desktop\项目文件\temp图片\1730788405295.png)
+
+> #### 举例：
+
+我们以清洗路径为`[default]QY/J16/YS/YS_LJLL`的变量数据为例：
+
+#### 一.查询以及导出需要清洗的数据
+
+通过查询`history.sqlth_te`表获取该变量的id，其对应`history.sqlt_data_1_2024_11`表中的`tagid`
+
+```mysql
+SELECT * FROM history.sqlth_te where tagpath = "QY/J16/YS/YS_LJLL";
+```
+
+![](C:\Users\Administrator\Desktop\项目文件\temp图片\1730785266870.png)
+
+在`history.sqlt_data_1_2024_11`表中，我们通过`sql`语句筛选时间范围内的数据
+
+，例如我们要清洗`2024-11-01 16:00:32`以后的数据，也就是`t_stamp`为`1730448032000`，
+
+```mysql
+SELECT * FROM history.sqlt_data_1_2024_11
+WHERE  t_stamp >=1730448032000 and tagid = 14027 ;
+```
+
+将筛选出的`sql`数据导出`.csv`文件，（建议使用导出方式，复制可能会产生缺失）
+
+#### 二.在excel表中更新新数据值
+
+该文件中的`floatvalue`列便是历史数据值，新加一列用于存放清洗后的数据值，由于需要确保增长趋势相对稳定，因此应用**指数平滑**来平缓数据是一个合适的选择，
+$$
+y 
+smooth
+​
+ =α⋅y+(1−α)⋅y 
+prev
+​
+$$
+应用到我们的实际数据中，我们定义平滑因子为0.2，意味着每个新数据点有 20% 的权重，80% 来自之前的平滑值。这个值适合用于波动较大的数据，可以使平滑效果更加平稳。（根据实际情况可调整平滑因子大小）具体公式为：
+$$
+0.2 * y + (1 - 0.2) * y(0)
+$$
+其中，0.2为平滑因子，y为需要清洗的数据值，y(0)为需要清洗数据列的第一个数据值（由于本文举例的例子为累加数据的历史数据，因此y(0)指的是导出历史数据最小的数据值）
+
+如：
+
+![](C:\Users\Administrator\Desktop\项目文件\temp图片\1730786495302.png)
+
+另外，由于时间戳的格式在读取过程中可能呈现`1.73E+12`这种的字符串形式难以识别，建议将`t_stamp`这一列转换为数值格式，且不保留小数点。
+
+如：
+
+![](C:\Users\Administrator\Desktop\项目文件\temp图片\1730787031116.png)
+
+之后保存建议选择保存为`UTF-8（CSV）`文件。
+
+#### 三.在ignition中执行插入操作
+
+如果选择将文件在`ignition`中进行插入操作，需要先将文件放置到目标网关所在的服务器上（与数据库不一定是同一个服务器）。
+
+使用`system.tag.storeTagHistory`方法在`ignition`中执行代码（注意插入操作只能执行一次）：
+
+```python
+	file_path = u"C:\\Users\\Administrator\\Desktop\\恩华药业数据库清洗1\\path6.csv"  #文件必须要在网关所在的系统中
+	csv_content = system.file.readFileAsString(file_path, "UTF-8") #返回为字符串
+	lines = csv_content.split("\n")  #由于导出的数据以每行为分割
+	columnNames = lines[0].split(",")  #每行中再进行分割
+	data = []
+	for line in lines[1:]:
+		if line.strip():
+			data.append(line.split(","))
+	dataset = system.dataset.toDataSet(columnNames, data)
+	pydataset = system.dataset.toPyDataSet(dataset)#转为dataset
+
+	paths = ["QY/J18/YS/YS_LJLL_HW" for i in range(len(pydataset))]#注意，路径中不包[default]
+	timeStamps = []
+	values = []
+	historyprovider = "History"  
+	tagprovider = "default"  #一般情况下为History和default，具体需要查询每个项目搁着设置
+	for row in pydataset:
+		timeStamps.append(int(row[6]))
+		values.append(float(row[7]))
+	
+    system.tag.storeTagHistory(historyprovider =historyprovider , tagprovider=tagprovider, paths=paths, values=values,timestamps = timeStamps)
+    #执行插入操作
+```
+

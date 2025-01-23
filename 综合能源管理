@@ -1,0 +1,346 @@
+### 综合能源管理
+
+
+
+### 需求：
+
+- 制定json格式标准，数据清洗为标准化的Json格式
+- 制作视图框架，关联视图，
+- 留出数据导入接口
+- 实现只要以标准格式的数据导入，就会呈现标准化视图
+
+需求点：
+
+- [x] 考虑数据时刻变动性
+- [x] 标准Json格式的兼顾性
+- [x] 视图属性之间的单位差异
+- [x] 确保系统设计具有良好的扩展性，以便于将来添加新功能或修改现有功能，并保持代码和配置的可维护性。
+- [x] 支持多层级菜单的动态生成和管理，适应复杂的层级结构。     
+
+### Ignition 实现具体流程
+
+![](C:\Users\Administrator\Desktop\临时图片\unity project flow chart.png)
+
+### 1.制定灵活的 JSON 格式标准
+
+为了应对不同类型的数据和层级结构，灵活的 JSON 格式需要具备以下特点：
+
+1. **通用性**：能够适应不同类型的数据，无论是简单的平面数据还是复杂的层级数据。
+2. **扩展性**：能够在不影响现有数据结构的情况下，添加新的字段或层级。
+3. **自描述性**：每个数据节点包含描述自身结构和内容的信息，使解析和处理更为方便。
+4. **一致性**：保持一定的格式一致性，以便于数据处理和视图生成。
+
+- #### 示例 JSON 格式设计
+
+
+下面是一个通用的 JSON 格式示例，适用于包含不同层级结构和多类型数据的情况：
+
+```json
+{
+    "timestamp": "2024-07-15T16:16:00Z",
+    "projects": [
+        {
+            "projectId": "001",
+            "name": "Project A",
+            "devices": [
+                {
+                    "deviceId": "12345",
+                    "parameters": [
+                        {
+                            "name": "temperature",
+                            "value": 25.6,
+                            "unit": "C"
+                        },
+                        {
+                            "name": "pressure",
+                            "value": 101.3,
+                            "unit": "kPa"
+                        }
+                    ],
+                    "subsystems": [
+                        {
+                            "subsystemId": "sub1",
+                            "name": "Cooling System",
+                            "parameters": [
+                                {
+                                    "name": "coolant_level",
+                                    "value": 70,
+                                    "unit": "%"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "projectId": "002",
+            "name": "Project B",
+            "devices": [
+                {
+                    "deviceId": "67890",
+                    "parameters": [
+                        {
+                            "name": "humidity",
+                            "value": 45,
+                            "unit": "%"
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}
+```
+
+- #### 详细解析和处理策略
+
+
+##### 1. **通用性和扩展性**
+
+该 JSON 格式允许项目（projects）、设备（devices）、参数（parameters）和子系统（subsystems）等多个层级的定义。新的层级和字段可以方便地添加而不会影响现有结构。
+
+```json
+"subsystems": [
+    {
+        "subsystemId": "sub1",
+        "name": "Cooling System",
+        "parameters": [
+            {
+                "name": "coolant_level",
+                "value": 70,
+                "unit": "%"
+            }
+        ]
+    }
+]
+```
+
+在上述结构中，`subsystems`字段可以包含一个或多个子系统，每个子系统可以包含自己的参数。这种设计可以无限扩展，添加更多的层级如需要。
+
+##### 2. **自描述性**
+
+每个数据节点（如项目、设备、参数）都包含描述自身的信息，包括名称、ID和其他相关属性。这使得数据更具可读性和可解析性。
+
+```json
+{
+    "name": "temperature",
+    "value": 25.6,
+    "unit": "C"
+}
+```
+
+##### 3. **一致性**
+
+保持一致的字段命名和层级结构，使数据处理和视图生成更加规范和简便。例如，每个项目都包含`projectId`和`name`，每个设备都包含`deviceId`和`parameters`。
+
+- #### 多层级菜单的处理
+
+
+在处理多层级菜单时，可以根据 JSON 数据的结构动态生成菜单项。以下是一个 Python 示例，展示如何解析上述 JSON 数据并生成多层级菜单：
+
+```python
+import json
+
+def create_menu(data):
+    menu = []
+    for project in data["projects"]:
+        project_node = {
+            "text": project["name"],
+            "children": []
+        }
+        for device in project["devices"]:
+            device_node = {
+                "text": device["deviceId"],
+                "children": []
+            }
+            for param in device["parameters"]:
+                param_node = {
+                    "text": "{}: {} {}".format(param["name"], param["value"], param["unit"])
+                }
+                device_node["children"].append(param_node)
+            for subsystem in device.get("subsystems", []):
+                subsystem_node = {
+                    "text": subsystem["name"],
+                    "children": []
+                }
+                for param in subsystem["parameters"]:
+                    param_node = {
+                        "text": "{}: {} {}".format(param["name"], param["value"], param["unit"])
+                    }
+                    subsystem_node["children"].append(param_node)
+                device_node["children"].append(subsystem_node)
+            project_node["children"].append(device_node)
+        menu.append(project_node)
+    return menu
+
+# 示例 JSON 数据
+data = json.loads('''
+{
+    "timestamp": "2024-07-15T16:16:00Z",
+    "projects": [
+        {
+            "projectId": "001",
+            "name": "Project A",
+            "devices": [
+                {
+                    "deviceId": "12345",
+                    "parameters": [
+                        {
+                            "name": "temperature",
+                            "value": 25.6,
+                            "unit": "C"
+                        },
+                        {
+                            "name": "pressure",
+                            "value": 101.3,
+                            "unit": "kPa"
+                        }
+                    ],
+                    "subsystems": [
+                        {
+                            "subsystemId": "sub1",
+                            "name": "Cooling System",
+                            "parameters": [
+                                {
+                                    "name": "coolant_level",
+                                    "value": 70,
+                                    "unit": "%"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "projectId": "002",
+            "name": "Project B",
+            "devices": [
+                {
+                    "deviceId": "67890",
+                    "parameters": [
+                        {
+                            "name": "humidity",
+                            "value": 45,
+                            "unit": "%"
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}
+''')
+
+menu = create_menu(data)
+print(json.dumps(menu, indent=2))
+```
+
+### 2. 创建数据清洗脚本
+
+编写脚本，将原始数据转换为标准化的 JSON 格式。这可以在 Ignition 的脚本模块中进行。例如，使用 Python 脚本进行数据清洗，例如：
+
+```python
+import json
+
+def clean_data(raw_data):
+    # 处理原始数据，将其转换为标准化的 JSON 格式
+    cleaned_data = {
+        "timestamp": raw_data["timestamp"],
+        "devices": []
+    }
+    for device in raw_data["devices"]:
+        cleaned_device = {
+            "deviceId": device["id"],
+            "parameters": []
+        }
+        for param in device["params"]:
+            cleaned_param = {
+                "name": param["name"],
+                "value": param["value"],
+                "unit": param["unit"]
+            }
+            cleaned_device["parameters"].append(cleaned_param)
+        cleaned_data["devices"].append(cleaned_device)
+    return json.dumps(cleaned_data)
+```
+
+### 3. 制作视图框架
+
+在 Ignition 的 Perspective 模块中创建动态视图框架，根据 JSON 数据生成多层级菜单和视图组件。例如，可以使用树形结构展示项目和设备：
+
+```
+python复制代码# 示例代码：创建树形菜单
+def create_tree_menu(data):
+    tree_menu = []
+    for project in data["projects"]:
+        project_node = {
+            "text": project["name"],
+            "children": []
+        }
+        for device in project["devices"]:
+            device_node = {
+                "text": device["deviceId"],
+                "children": []
+            }
+            for param in device["parameters"]:
+                param_node = {
+                    "text": "{}: {} {}".format(param["name"], param["value"], param["unit"])
+                }
+                device_node["children"].append(param_node)
+            project_node["children"].append(device_node)
+        tree_menu.append(project_node)
+    return tree_menu
+```
+
+### 4. 关联视图
+
+通过脚本或绑定，将标准化 JSON 数据与视图组件关联。例如，将设备参数值绑定到仪表盘或图表组件：
+
+```python
+data = json.loads(cleaned_data)
+for device in data["devices"]:
+    for param in device["parameters"]:
+        # 绑定参数值到视图组件
+        path = "path.to.component.{}".format(param["name"])
+        system.tag.writeBlocking([path], [param["value"]])
+```
+
+#### 5. 留出数据导入接口
+
+提供一个接口，以便用户可以将标准格式的数据导入系统。可以使用 Ignition 的 Web Dev 模块创建一个 REST API 接口，接收并处理导入的数据：
+
+```python
+from flask import request, jsonify
+
+@app.route('/import_data', methods=['POST'])
+def import_data():
+    raw_data = request.get_json()
+    cleaned_data = clean_data(raw_data)
+    # 将清洗后的数据写入数据库或标签
+    save_data(cleaned_data)
+    return jsonify({"status": "success"})
+```
+
+### 6. 实现视图的自动更新
+
+设置定时任务或监听机制，以便在数据导入后自动更新视图。可以使用 Ignition 的定时脚本或标签事件脚本实现：
+
+```python
+def update_view():
+    # 从数据库或标签读取最新的标准化数据
+    cleaned_data = system.tag.readBlocking(["[default]CleanedData"])[0].value
+    data = json.loads(cleaned_data)
+    for device in data["devices"]:
+        for param in device["parameters"]:
+            # 更新视图组件
+            path = "path.to.component.{}".format(param["name"])
+            system.tag.writeBlocking([path], [param["value"]])
+
+# 设置定时任务，每分钟更新一次视图
+system.util.invokeLater(update_view, 60000)
+```
+
+通过上述步骤，可以在 Ignition 中实现标准化的数据导入和视图展示，满足需求点。
+
